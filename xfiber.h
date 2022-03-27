@@ -1,13 +1,11 @@
 #pragma once
 
 #include <map>
+#include <queue>
 #include <vector>
 #include <string>
 #include <functional>
-
-extern "C" {
 #include <ucontext.h>
-}
 
 typedef enum {
     INIT = 0,
@@ -23,20 +21,22 @@ public:
 
     ~XFiber();
 
-    void AddTask(Fiber *fiber);
+    void AddReadyTask(Fiber *fiber);
     
     void AddTask(std::function<void()> run, size_t stack_size = 0, std::string fiber_name="");
 
     void Dispatch();
 
-    // void Yield();
+    void Yield();
 
     ucontext_t *SchedCtx();
 
 private:
-    std::vector<Fiber *> ready_;
+    std::deque<Fiber *> ready_fibers_;
+
     ucontext_t sched_ctx_;
 
+    Fiber *curr_fiber_;
 };
 
 

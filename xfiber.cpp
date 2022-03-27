@@ -8,6 +8,7 @@
 
 
 XFiber::XFiber() {
+    curr_fiber_ = nullptr;
 }
 
 XFiber::~XFiber() {
@@ -17,8 +18,8 @@ ucontext_t *XFiber::SchedCtx() {
     return &sched_ctx_;
 }
 
-void XFiber::AddTask(Fiber *fiber) {
-    ready_.push_back(fiber);
+void XFiber::AddReadyTask(Fiber *fiber) {
+    ready_fibers_.push_back(fiber);
 }
 
 void XFiber::AddTask(std::function<void ()> run, size_t stack_size, std::string fiber_name) {
@@ -27,29 +28,35 @@ void XFiber::AddTask(std::function<void ()> run, size_t stack_size, std::string 
     }
     Fiber *fiber = new Fiber(run, stack_size, fiber_name);
     fiber->SetXFiber(this);
-    AddTask(fiber);
+    AddReadyTask(fiber);
 }
 
 void XFiber::Dispatch() {
     while (true) {
-        if (ready_.size() > 0) {
-            for (auto iter = ready_.begin(); iter != ready_.end(); iter++) {
+        if (ready_fibers_.size() > 0) {
+            std::deque<Fiber *> ready = std::move(ready_fibers_);
+            ready_fibers_.clear();
+
+            for (auto iter = ready.begin(); iter != ready.end(); iter++) {
                 Fiber *fiber = *iter;
-                swapcontext((ucontext_t *)SchedCtx(), fiber->Ctx());
+                curr_fiber_ = fiber;
+                assert(swapcontext(SchedCtx(), fiber->Ctx()) == 0);
+                curr_fiber_ = nullptr;
 
                 if (fiber->IsFinished()) {
                     delete fiber;
                 }
             }
-            ready_.clear();
+            ready.clear();
         }
     }
 }
 
-// void XFiber::Yield() {
-//     xfiber_->AddTask(this);
-//     swapcontext(&ctx_, xfiber_->SchedCtx());
-// }
+void XFiber::Yield() {
+    assert(curr_fiber_ != nullptr);
+    AddReadyTask(curr_fiber_);
+    assert(swapcontext(curr_fiber_->Ctx(), SchedCtx()) == 0);
+}
 
 
 Fiber::Fiber(std::function<void ()> run, size_t stack_size, std::string fiber_name) {
@@ -64,7 +71,7 @@ Fiber::~Fiber() {
 }
 
 void Fiber::SetXFiber(XFiber *xfiber) {
-    getcontext(&ctx_);
+    assert(getcontext(&ctx_) == 0);
 
     ctx_.uc_stack.ss_sp = stack_ptr_;
     ctx_.uc_stack.ss_size = stack_size_;

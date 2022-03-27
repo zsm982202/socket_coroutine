@@ -21,7 +21,7 @@ int main() {
         cout << "hello world 11" << endl;
         cout << "hello world 12" << endl;
         cout << "hello world 13" << endl;
-        // xfiber.Yield();
+        xfiber.Yield();
         cout << "hello world 14" << endl;
         cout << "hello world 15" << endl;
 
