@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <iostream>
 #include <sys/epoll.h>
 #include <signal.h>
@@ -5,7 +6,6 @@
 #include <assert.h>
 #include "xfiber.h"
 
-ucontext_t sched_ctx_;
 
 XFiber::XFiber() {
 }
@@ -17,23 +17,25 @@ ucontext_t *XFiber::SchedCtx() {
     return &sched_ctx_;
 }
 
+void XFiber::AddTask(Fiber *fiber) {
+    ready_.push_back(fiber);
+}
+
 void XFiber::AddTask(std::function<void ()> run, size_t stack_size, std::string fiber_name) {
     if (stack_size == 0) {
         stack_size = 131072;
     }
     Fiber *fiber = new Fiber(run, stack_size, fiber_name);
     fiber->SetXFiber(this);
-
-    ready_.push_back(fiber);
+    AddTask(fiber);
 }
 
 void XFiber::Dispatch() {
     while (true) {
         if (ready_.size() > 0) {
-            for (auto iter = ready_.rbegin(); iter != ready_.rend(); iter++) {
+            for (auto iter = ready_.begin(); iter != ready_.end(); iter++) {
                 Fiber *fiber = *iter;
-                std::cout << "try start " << fiber->Name() << std::endl;
-                swapcontext(&sched_ctx_, fiber->Ctx());
+                swapcontext((ucontext_t *)SchedCtx(), fiber->Ctx());
 
                 if (fiber->IsFinished()) {
                     delete fiber;
@@ -43,6 +45,11 @@ void XFiber::Dispatch() {
         }
     }
 }
+
+// void XFiber::Yield() {
+//     xfiber_->AddTask(this);
+//     swapcontext(&ctx_, xfiber_->SchedCtx());
+// }
 
 
 Fiber::Fiber(std::function<void ()> run, size_t stack_size, std::string fiber_name) {
@@ -61,7 +68,7 @@ void Fiber::SetXFiber(XFiber *xfiber) {
 
     ctx_.uc_stack.ss_sp = stack_ptr_;
     ctx_.uc_stack.ss_size = stack_size_;
-    ctx_.uc_link = xfiber_->SchedCtx();
+    ctx_.uc_link = xfiber->SchedCtx();
     makecontext(&ctx_, (void (*)())Fiber::Start, 1, this);
 }
 
@@ -70,7 +77,6 @@ ucontext_t *Fiber::Ctx() {
 }
 
 void Fiber::Start(Fiber *fiber) {
-    std::cout << "start " << fiber->fiber_name_ << std::endl;
     fiber->run_();
     fiber->status_ = FiberStatus::FINISHED;
 }
@@ -82,3 +88,4 @@ std::string Fiber::Name() {
 bool Fiber::IsFinished() {
     return status_ == FiberStatus::FINISHED;
 }
+

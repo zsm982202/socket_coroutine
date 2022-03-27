@@ -5,8 +5,9 @@
 #include <string>
 #include <functional>
 
+extern "C" {
 #include <ucontext.h>
-
+}
 
 typedef enum {
     INIT = 0,
@@ -22,14 +23,20 @@ public:
 
     ~XFiber();
 
+    void AddTask(Fiber *fiber);
+    
     void AddTask(std::function<void()> run, size_t stack_size = 0, std::string fiber_name="");
 
     void Dispatch();
+
+    // void Yield();
 
     ucontext_t *SchedCtx();
 
 private:
     std::vector<Fiber *> ready_;
+    ucontext_t sched_ctx_;
+
 };
 
 
@@ -49,6 +56,8 @@ public:
     void SetXFiber(XFiber *xfiber);
     
     void Run();
+
+    void Yield();
 
     static void Start(Fiber *fiber);
 

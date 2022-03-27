@@ -17,8 +17,14 @@ int main() {
 
     XFiber xfiber;
 
-    xfiber.AddTask([]() {
-        cout << "hello world 1" << endl;
+    xfiber.AddTask([&]() {
+        cout << "hello world 11" << endl;
+        cout << "hello world 12" << endl;
+        cout << "hello world 13" << endl;
+        // xfiber.Yield();
+        cout << "hello world 14" << endl;
+        cout << "hello world 15" << endl;
+
     }, 0, "f1");
 
     xfiber.AddTask([]() {
