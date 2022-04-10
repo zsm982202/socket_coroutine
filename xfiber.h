@@ -77,7 +77,7 @@ private:
 class Fiber
 {
 public:
-    Fiber(std::function<void ()> run, size_t stack_size, std::string fiber_name);
+    Fiber(std::function<void ()> run, XFiber *xfiber, size_t stack_size, std::string fiber_name);
 
     ~Fiber();
 
@@ -86,8 +86,6 @@ public:
     std::string Name();
 
     bool IsFinished();
-
-    void SetXFiber(XFiber *xfiber);
     
     void Run();
 
