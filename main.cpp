@@ -38,20 +38,28 @@ int main() {
     */
 
     xfiber->CreateFiber([&]{
-        Listener listener = Listener::ListenTCP(6379);
+        Listener listener = Listener::ListenTCP(7000);
         while (true) {
-            shared_ptr<Connection> conn = listener.Accept();
-            xfiber->CreateFiber([conn] {
+            shared_ptr<Connection> conn1 = listener.Accept();
+            shared_ptr<Connection> conn2 = Connection::ConnectTCP("127.0.0.1", 6379);
+
+            xfiber->CreateFiber([conn1, conn2] {
                 while (true) {
                     char recv_buf[512];
-                    int n = conn->Read(recv_buf, 512);
+                    int n = conn1->Read(recv_buf, 512);
                     if (n <= 0) {
                         break;
                     }
-                    recv_buf[n] = '\0';
-                    //cout << "recv: " << recv_buf << endl;
-                    char *rsp = "+OK\r\n";
-                    conn->Write(rsp, strlen(rsp));
+
+                 #if 0
+                    conn2->Write(recv_buf, n);
+                    char rsp[1024];
+                    int rsp_len = conn2->Read(rsp, 1024);
+                    cout << "recv from remote: " << rsp << endl;
+                    conn1->Write(rsp, rsp_len);
+                #else
+                    conn1->Write("+OK\r\n", 5);
+                #endif
                 }
             }, 0, "server");
         }

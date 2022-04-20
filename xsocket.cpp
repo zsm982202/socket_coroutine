@@ -6,11 +6,16 @@ uint32_t Fd::next_seq_ = 0;
 
 
 Fd::Fd() {
+    fd_ = -1;
     seq_ = Fd::next_seq_++;
 }
 
 Fd::~Fd() {
 
+}
+
+bool Fd::Available() {
+    return fd_ > 0;
 }
 
 int Fd::RawFd() {
@@ -37,19 +42,25 @@ Listener Listener::ListenTCP(uint16_t port) {
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     int flag = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag)) < 0) {
+        LOG(ERROR) << "try set SO_REUSEADDR failed, msg=" << strerror(errno);
+        exit(-1);
+    }
 
-    fcntl(fd, F_SETFL, O_NONBLOCK);
+    if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
+        LOG(ERROR) << "set set listen fd O_NONBLOCK failed, msg=" << strerror(errno);
+        exit(-1);
+    }
 
     //bind
     if (bind(fd, (sockaddr *)&addr, sizeof(sockaddr_in)) < 0) {
-        perror("bind");
+        LOG(ERROR) << "try bind port [" << port << "] failed, msg=" << strerror(errno);
         exit(-1);
     }
 
     //listen
     if (listen(fd, 10) < 0) {
-        perror("listen");
+        LOG(ERROR) << "try listen port[ " << port << "] failed, msg=" << strerror(errno);
         exit(-1);
     }
 
@@ -74,7 +85,7 @@ std::shared_ptr<Connection> Listener::Accept() {
             }
             int nodelay = 1;
             if (setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
-                perror("setsockopt tcp_nodelay");
+                LOG(ERROR) << "try set TCP_NODELAY failed, msg=" << strerror(errno);
                 close(client_fd);
                 client_fd = -1;
             }
@@ -84,7 +95,7 @@ std::shared_ptr<Connection> Listener::Accept() {
         else {
             if (errno == EAGAIN) {
                 // accept失败，协程切出
-                xfiber->RegisterFd(fd_, false);
+                xfiber->RegisterFd(fd_, -1, false);
                 xfiber->SwitchToSched();
             }
             else if (errno == EINTR) {
@@ -100,7 +111,6 @@ std::shared_ptr<Connection> Listener::Accept() {
 
 
 Connection::Connection() {
-
 }
 
 Connection::Connection(int fd) {
@@ -114,6 +124,38 @@ Connection::~Connection() {
     fd_ = -1;
 }
 
+
+std::shared_ptr<Connection> Connection::ConnectTCP(const char *ipv4, uint16_t port) {
+    int fd = socket(AF_INET,SOCK_STREAM, 0);
+ 
+    struct sockaddr_in svr_addr;
+    memset(&svr_addr, 0, sizeof(svr_addr));
+    svr_addr.sin_family = AF_INET;
+    svr_addr.sin_port = htons(port);  
+    svr_addr.sin_addr.s_addr = inet_addr(ipv4);  
+ 
+    //连接服务器，成功返回0，错误返回-1
+    if (connect(fd, (struct sockaddr *)&svr_addr, sizeof(svr_addr)) < 0)
+    {
+        LOG(ERROR) << "try connect " << ipv4 << ":" << port << " failed, msg=" << strerror(errno);
+        return std::shared_ptr<Connection>(new Connection(-1));
+    }
+
+    int nodelay = 1;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
+        LOG(ERROR) << "try set TCP_NODELAY failed, msg=" << strerror(errno);
+        close(fd);
+        return std::shared_ptr<Connection>(new Connection(-1));
+    }
+
+    if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
+        LOG(ERROR) << "set set fd[" << fd << "] O_NONBLOCK failed, msg=" << strerror(errno);
+        close(fd);
+        return std::shared_ptr<Connection>(new Connection(-1));
+    }
+    LOG(DEBUG) << "connect " << ipv4 << ":" << port << " success with fd[" << fd << "]";
+    return std::shared_ptr<Connection>(new Connection(fd));
+}
 
 ssize_t Connection::Write(const char *buf, size_t sz, int timeout_ms) const {
     size_t write_bytes = 0;
@@ -137,7 +179,7 @@ ssize_t Connection::Write(const char *buf, size_t sz, int timeout_ms) const {
             else if (errno == EAGAIN) {
                 LOG(DEBUG) << "write to fd[" << fd_ << "] "
                               "return EAGIN, add fd into IO waiting events and switch to sched";
-                xfiber->RegisterFd(fd_, true);
+                xfiber->RegisterFd(fd_, -1, true);
                 xfiber->SwitchToSched();
             }
             else {
@@ -171,7 +213,7 @@ ssize_t Connection::Read(char *buf, size_t sz, int timeout_ms) const {
             else if (errno == EAGAIN) {
                 LOG(DEBUG) << "read from fd[" << fd_ << "] "
                               "return EAGIN, add fd into IO waiting events and switch to sched";
-                xfiber->RegisterFd(fd_, false);
+                xfiber->RegisterFd(fd_, -1, false);
                 xfiber->SwitchToSched();
             }
             else if (errno == EINTR) {
