@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 #include <map>
 #include <list>
 #include <queue>
@@ -42,7 +43,7 @@ public:
 
     void SwitchToSched();
 
-    bool RegisterFd(int fd, bool is_write);
+    bool RegisterFd(int fd, int64_t expired_at, bool is_write);
 
     bool UnregisterFd(int fd);
 
@@ -64,17 +65,19 @@ private:
 
     Fiber *curr_fiber_;
 
-    struct WaitingFibers {
+    struct WaitingFiber {
         Fiber *r_, *w_;
-        WaitingFibers() {
+        WaitingFiber() {
             r_ = nullptr;
             w_ = nullptr;
         }
     };
 
-    std::map<int, WaitingFibers> io_waiting_fibers_;
+    std::map<int, WaitingFiber> io_waiting_fibers_;
     // 会不会出现一个fd的读/写被多个协程监听？？不会！
     // 但是一个fiber可能会监听多个fd，实际也不存在，一个连接由一个协程处理
+
+    std::map<int64_t, std::set<Fiber *>> expired_events_;
 };
 
 
@@ -95,6 +98,48 @@ public:
 
     static void Start(Fiber *fiber);
 
+    struct WaitingFd {
+        int fd_;
+        int64_t expired_at_;
+
+        WaitingFd(int fd =-1, int64_t expired_at=-1) {
+            fd_ = fd;
+            expired_at_ = expired_at;
+        }
+    };
+
+    struct WaitingEvents {
+        // 一个协程中监听的fd不会太多，所以直接用数组
+        std::vector<WaitingFd> waiting_fds_r_;
+        std::vector<WaitingFd> waiting_fds_w_;
+    };
+
+    WaitingEvents &GetWaitingEvents() {
+        return waiting_events_;
+    }
+
+    void SetReadEvent(const WaitingFd &waiting_fd) {
+        for (size_t i = 0; i < waiting_events_.waiting_fds_r_.size(); ++i) {
+            if (waiting_events_.waiting_fds_r_[i].fd_ == waiting_fd.fd_) {
+                waiting_events_.waiting_fds_r_[i].expired_at_ = waiting_fd.expired_at_;
+                return ;
+            }
+        }
+        waiting_events_.waiting_fds_r_.push_back(waiting_fd);
+    }
+
+    void SetWriteEvent(const WaitingFd &waiting_fd) {
+        for (size_t i = 0; i < waiting_events_.waiting_fds_w_.size(); ++i) {
+            if (waiting_events_.waiting_fds_w_[i].fd_ == waiting_fd.fd_) {
+                waiting_events_.waiting_fds_w_[i].expired_at_ = waiting_fd.expired_at_;
+                return ;
+            }
+        }
+        waiting_events_.waiting_fds_w_.push_back(waiting_fd);
+    }
+
+
+
 private:
     uint64_t seq_;
 
@@ -111,5 +156,8 @@ private:
     size_t stack_size_;
     
     std::function<void ()> run_;
+
+    WaitingEvents waiting_events_;
+
 };
 
