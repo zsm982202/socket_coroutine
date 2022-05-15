@@ -5,8 +5,8 @@
 #include <cstring>
 #include <memory>
 
-#include "xfiber.h"
-#include "xsocket.h"
+#include "Coroutine.h"
+#include "SockCoroutine.h"
 
 using namespace std;
 
@@ -23,7 +23,7 @@ void sigint_action(int sig) {
 int main() {
     signal(SIGINT, sigint_action);
 
-    XFiber *xfiber = XFiber::xfiber();
+    Schedule *xfiber = Schedule::coroutineManager();
     /*xfiber->AddTask([&]() {
         cout << "hello world 11" << endl;
         xfiber->Yield();
@@ -41,20 +41,24 @@ int main() {
     }, 0, "f2");
     */
 
-    xfiber->CreateFiber([xfiber]{
-        for (int i = 0; i < 10; i++) {
-            cout << i << endl;
-            xfiber->SleepMs(1000);
-        }
-    });
+//    xfiber->CreateFiber([xfiber]{
+//        for (int i = 0; i < 10; i++) {
+//           cout << i << endl;
+//            xfiber->SleepMs(1000);
+//        }
+//    });
 
-    xfiber->CreateFiber([&]{
-        Listener listener = Listener::ListenTCP(7000);
+    xfiber->CreateCoroutine([&]{
+        Server server = Server::ListenTCP(7000);
         while (true) {
-            shared_ptr<Connection> conn1 = listener.Accept();
-            //shared_ptr<Connection> conn2 = Connection::ConnectTCP("127.0.0.1", 6379);
+			shared_ptr<Client> conn1 = server.Accept();
+//            Connection* conn1 = listener.Accept();
+//            cout << "conn1" << conn1.use_count() << endl;
+//			shared_ptr<Connection> conn2 = Connection::ConnectTCP("127.0.0.1", 7000);
+//            cout << "conn1" << conn1.use_count() << endl;
+//			cout << "conn2" << conn2.use_count() << endl;
 
-            xfiber->CreateFiber([conn1] {
+            xfiber->CreateCoroutine([conn1] {
                 while (true) {
                     char recv_buf[512];
                     int n = conn1->Read(recv_buf, 512, 5000);

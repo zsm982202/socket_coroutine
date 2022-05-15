@@ -6,9 +6,7 @@
 #include <sys/time.h>
 
 namespace util {
-
-int64_t NowMs();
-
+	int64_t NowMs();
 }
 
 #endif
