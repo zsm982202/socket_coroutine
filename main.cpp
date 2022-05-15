@@ -19,22 +19,22 @@ void sigint_action(int sig) {
 int main() {
     signal(SIGINT, sigint_action);
     Schedule *schedule = Schedule::coroutineManager();
-    schedule->CreateCoroutine([&]{
+    schedule->CreateCoroutine([&] {
         Server server = Server::ListenTCP(7000);
-        while (true) {
-			Connection* conn = server.Accept();
+        while(true) {
+            Connection* conn = server.Accept();
             schedule->CreateCoroutine([conn] {
-                while (true) {
+                while(true) {
                     char recv_buf[512];
                     int n = conn->Read(recv_buf, 512, 2000);
-                    if (n <= 0)
+                    if(n <= 0)
                         break;
-                    if (conn->Write("Recv\r\n", 6, 2000) <= 0)
+                    if(conn->Write("Recv\r\n", 6, 2000) <= 0)
                         break;
                 }
             }, 0, "server");
         }
-    })£»
+    });
     schedule->Dispatch();
 
     return 0;
