@@ -84,10 +84,9 @@ void Schedule::CreateCoroutine(std::function<void ()> run, size_t stack_size, st
 }
 
 void Schedule::Dispatch() {
-	//由于epoll_wait(efd_, evs, MAX_EVENT_COUNT, 2)最多2ms进入下一次循环
 	while (true) {
 		if (ready_coroutines_.size() > 0) {
-			running_coroutines_ = std::move(ready_coroutines_); //?
+			running_coroutines_ = std::move(ready_coroutines_); //左值转右值，省去拷贝的时间
 			ready_coroutines_.clear();
 			LOG_DEBUG("there are %ld coroutine(s) in ready list, ready to run...", running_coroutines_.size());
 
@@ -119,12 +118,11 @@ void Schedule::Dispatch() {
 
 #define MAX_EVENT_COUNT 512
 		struct epoll_event evs[MAX_EVENT_COUNT];
-		int n = epoll_wait(efd_, evs, MAX_EVENT_COUNT, 2); //阻塞2ms
+		int n = epoll_wait(efd_, evs, MAX_EVENT_COUNT, 0); //不阻塞立刻返回
 		if (n < 0) {
 			LOG_ERROR("epoll_wait error, msg=%s", strerror(errno));
 			continue;
 		}
-
 
 		for (int i = 0; i < n; i++) {
 			struct epoll_event &ev = evs[i];

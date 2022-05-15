@@ -26,18 +26,15 @@ int main() {
             schedule->CreateCoroutine([conn] {
                 while (true) {
                     char recv_buf[512];
-                    int n = conn->Read(recv_buf, 512, 5000);
-                    if (n <= 0) {
+                    int n = conn->Read(recv_buf, 512, 2000);
+                    if (n <= 0)
                         break;
-                    }
-
-                    if (conn->Write("+OK\r\n", 5, 1000) <= 0) {
+                    if (conn->Write("Recv\r\n", 6, 2000) <= 0)
                         break;
-                    }
                 }
             }, 0, "server");
         }
-    });
+    })£»
     schedule->Dispatch();
 
     return 0;
