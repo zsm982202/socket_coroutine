@@ -29,7 +29,7 @@ int main() {
                     int n = conn->Read(recv_buf, 512, 2000);
                     if(n <= 0)
                         break;
-                    if(conn->Write("+Recv\r\n", 6, 2000) <= 0)
+                    if(conn->Write("+Recv\r\n", 7, 2000) <= 0)
                         break;
                 }
             }, 0, "server");
