@@ -29,18 +29,26 @@ ucontext_t *Schedule::SchedCtx() {
 }
 
 void Schedule::WakeupCoroutine(Coroutine *coroutine) {
-	// 1. 加入就绪队列
+	// 加入就绪队列
+	coroutine->setStatus(CoroutineStatus::COROUTINE_READY);
 	ready_coroutines_.push_back(coroutine);
 
-	// 2. 从等待队列中删除
-	std::set<int> waiting_fds;
-	auto waiting_events = coroutine->GetWaitingEvents();
+	// 从等待队列中删除
+	Coroutine::WaitingEvents waiting_events = coroutine->GetWaitingEvents();
 	for (size_t i = 0; i < waiting_events.waiting_fds_r_.size(); i++) {
 		int fd = waiting_events.waiting_fds_r_[i].fd_;
 		auto iter = io_waiting_coroutines_.find(fd);
 		if (iter != io_waiting_coroutines_.end()) {
 			io_waiting_coroutines_.erase(iter);
-			waiting_fds.insert(fd);
+		}
+		int64_t expired_at = waiting_events.waiting_fds_r_[i].expired_at_;
+		if(expired_at > 0) {
+			auto expired_iter = expired_events_.find(expired_at);
+			if(expired_iter->second.find(coroutine) == expired_iter->second.end()) {
+				LOG_ERROR("not coroutine [%lu] in expired events", coroutine->Seq());
+			} else {
+				expired_iter->second.erase(coroutine);
+			}
 		}
 	}
 	for (size_t i = 0; i < waiting_events.waiting_fds_w_.size(); i++) {
@@ -48,37 +56,45 @@ void Schedule::WakeupCoroutine(Coroutine *coroutine) {
 		auto iter = io_waiting_coroutines_.find(fd);
 		if (iter != io_waiting_coroutines_.end()) {
 			io_waiting_coroutines_.erase(iter);
-			waiting_fds.insert(fd);
 		}
-	}
-
-	// 3. 从超时队列中删除
-	Coroutine::WaitingEvents &evs = coroutine->GetWaitingEvents();
-	for (size_t i = 0; i < evs.waiting_fds_r_.size(); i++) {
-		int64_t expired_at = evs.waiting_fds_r_[i].expired_at_;
-		if (expired_at > 0) {
+		int64_t expired_at = waiting_events.waiting_fds_w_[i].expired_at_;
+		if(expired_at > 0) {
 			auto expired_iter = expired_events_.find(expired_at);
-			if (expired_iter->second.find(coroutine) == expired_iter->second.end()) {
+			if(expired_iter->second.find(coroutine) == expired_iter->second.end()) {
 				LOG_ERROR("not coroutine [%lu] in expired events", coroutine->Seq());
-			}
-			else {
+			} else {
 				expired_iter->second.erase(coroutine);
 			}
 		}
 	}
 
-	for (size_t i = 0; i < evs.waiting_fds_w_.size(); i++) {
-		int64_t expired_at = evs.waiting_fds_w_[i].expired_at_;
-		if (expired_at > 0) {
-			auto expired_iter = expired_events_.find(expired_at);
-			if (expired_iter->second.find(coroutine) == expired_iter->second.end()) {
-				LOG_ERROR("not coroutine [%lu] in expired events", coroutine->Seq());
-			}
-			else {
-				expired_iter->second.erase(coroutine);
-			}
-		}
-	}
+	//// 从等待队列中删除超时的事件
+	//Coroutine::WaitingEvents &evs = coroutine->GetWaitingEvents();
+	//for (size_t i = 0; i < evs.waiting_fds_r_.size(); i++) {
+	//	int64_t expired_at = evs.waiting_fds_r_[i].expired_at_;
+	//	if (expired_at > 0) {
+	//		auto expired_iter = expired_events_.find(expired_at);
+	//		if (expired_iter->second.find(coroutine) == expired_iter->second.end()) {
+	//			LOG_ERROR("not coroutine [%lu] in expired events", coroutine->Seq());
+	//		}
+	//		else {
+	//			expired_iter->second.erase(coroutine);
+	//		}
+	//	}
+	//}
+
+	//for (size_t i = 0; i < evs.waiting_fds_w_.size(); i++) {
+	//	int64_t expired_at = evs.waiting_fds_w_[i].expired_at_;
+	//	if (expired_at > 0) {
+	//		auto expired_iter = expired_events_.find(expired_at);
+	//		if (expired_iter->second.find(coroutine) == expired_iter->second.end()) {
+	//			LOG_ERROR("not coroutine [%lu] in expired events", coroutine->Seq());
+	//		}
+	//		else {
+	//			expired_iter->second.erase(coroutine);
+	//		}
+	//	}
+	//}
 }
 
 //创建协程并加入ready_coroutines_
@@ -162,7 +178,8 @@ void Schedule::Dispatch() {
 
 void Schedule::Yield() {
 	assert(curr_coroutine_ != nullptr);
-	// 主动切出的后仍然是ready状态，等待下次调度
+	//主动切出的后仍然是ready状态，等待下次调度
+	curr_coroutine_->setStatus(CoroutineStatus::COROUTINE_READY);
 	ready_coroutines_.push_back(curr_coroutine_);
 	SwitchToSched();
 }
@@ -305,7 +322,7 @@ Coroutine::Coroutine(std::function<void ()> run, Schedule *coroutineManager, siz
 	makecontext(&ctx_, (void (*)())Coroutine::Start, 1, this);
 
 	seq_ = coroutine_seq++;
-	status_ = CoroutineStatus::COROUTINE_INIT;
+	status_ = CoroutineStatus::COROUTINE_SUSPEND;
 }
 
 Coroutine::~Coroutine() {
@@ -323,6 +340,7 @@ ucontext_t *Coroutine::Ctx() {
 }
 
 void Coroutine::Start(Coroutine *coroutine) {
+	coroutine->status_ = CoroutineStatus::COROUTINE_RUNNING;
 	coroutine->run_();
 	coroutine->status_ = CoroutineStatus::COROUTINE_DEAD;
 	LOG_DEBUG("coroutine[%lu] finished...", coroutine->Seq());
@@ -332,6 +350,30 @@ std::string Coroutine::Name() {
 	return coroutine_name_;
 }
 
+void Coroutine::setStatus(CoroutineStatus status) {
+	status_ = status;
+}
+
 bool Coroutine::IsFinished() {
 	return status_ == CoroutineStatus::COROUTINE_DEAD;
+}
+
+void Coroutine::SetReadEvent(const FdEvent& fe) {
+	for(size_t i = 0; i < waiting_events_.waiting_fds_r_.size(); ++i) {
+		if(waiting_events_.waiting_fds_r_[i].fd_ == fe.fd_) {
+			waiting_events_.waiting_fds_r_[i].expired_at_ = fe.expired_at_;
+			return;
+		}
+	}
+	waiting_events_.waiting_fds_r_.push_back(fe);
+}
+
+void Coroutine::SetWriteEvent(const FdEvent& fe) {
+	for(size_t i = 0; i < waiting_events_.waiting_fds_w_.size(); ++i) {
+		if(waiting_events_.waiting_fds_w_[i].fd_ == fe.fd_) {
+			waiting_events_.waiting_fds_w_[i].expired_at_ = fe.expired_at_;
+			return;
+		}
+	}
+	waiting_events_.waiting_fds_w_.push_back(fe);
 }
