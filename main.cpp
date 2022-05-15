@@ -16,18 +16,14 @@ void sigint_action(int sig) {
     exit(0);    
 }
 
-// #define DEBUG_ENABLE
-//#define DPRINT(fmt, args...) fprintf(stderr, "[D][%s %d] " fmt"\n", __FILE__, __LINE__, ##args);
-
-
 int main() {
     signal(SIGINT, sigint_action);
     Schedule *schedule = Schedule::coroutineManager();
     schedule->CreateCoroutine([&]{
         Server server = Server::ListenTCP(7000);
         while (true) {
-			shared_ptr<Connection> conn = server.Accept();
-            schedule->CreateCoroutine([client] {
+			Connection* conn = server.Accept();
+            schedule->CreateCoroutine([conn] {
                 while (true) {
                     char recv_buf[512];
                     int n = conn->Read(recv_buf, 512, 5000);

@@ -33,7 +33,7 @@ class Server : public Fd {
 public:
 	Server();
 	~Server();
-	std::shared_ptr<Connection> Accept(); //服务器监听，返回监听到的客户端
+	Connection* Accept(); //服务器监听，返回监听到的客户端
 	void SetFd(int fd); //设置监听套接字
 	static Server ListenTCP(uint16_t port); //负责监听的服务器
 private:
@@ -46,7 +46,7 @@ public:
 	Connection();
 	Connection(int fd); //设置客户端套接字
 	~Connection();
-	static std::shared_ptr<Connection> ConnectTCP(const char* ipv4, uint16_t port); //连接服务器
+	Connection* ConnectTCP(const char* ipv4, uint16_t port); //连接服务器
 	ssize_t Write(const char* buf, size_t sz, int timeout_ms = -1) const; //服务器往客户端写入
 	ssize_t Read(char* buf, size_t sz, int timeout_ms = -1) const; //服务器从客户端读出
 };

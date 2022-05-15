@@ -82,7 +82,7 @@ void Server::SetFd(int fd) {
 	fd_ = fd;
 }
 
-std::shared_ptr<Connection> Server::Accept() {
+Connection* Server::Accept() {
 	Schedule* coroutineManager = Schedule::coroutineManager();
 
 	while(true) {
@@ -102,7 +102,7 @@ std::shared_ptr<Connection> Server::Accept() {
 				client_fd = -1;
 			}
 			coroutineManager->TakeOver(client_fd); //将client_fd的边沿模式的读写事件添加到efd_中
-			return std::shared_ptr<Connection>(new Connection(client_fd));
+			return new Connection(client_fd);
 		} else {
 			if(errno == EAGAIN) {
 				// accept失败，协程切出
@@ -115,7 +115,7 @@ std::shared_ptr<Connection> Server::Accept() {
 			}
 		}
 	}
-	return std::shared_ptr<Connection>(new Connection(-1));
+	return new Connection(-1);
 }
 
 
@@ -134,7 +134,7 @@ Connection::~Connection() {
 }
 
 
-std::shared_ptr<Connection> Connection::ConnectTCP(const char* ipv4, uint16_t port) {
+Connection* Connection::ConnectTCP(const char* ipv4, uint16_t port) {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 
 	struct sockaddr_in svr_addr;
@@ -146,25 +146,25 @@ std::shared_ptr<Connection> Connection::ConnectTCP(const char* ipv4, uint16_t po
 	//连接服务器，成功返回0，错误返回-1
 	if(connect(fd, (struct sockaddr*) &svr_addr, sizeof(svr_addr)) < 0) {
 		LOG_ERROR("try connect %s:%d failed, msg=%s", ipv4, port, strerror(errno));
-		return std::shared_ptr<Connection>(new Connection(-1));
+		return new Connection(-1);
 	}
 
 	int nodelay = 1;
 	if(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
 		LOG_ERROR("try set TCP_NODELAY failed, msg=%s", strerror(errno));
 		close(fd);
-		return std::shared_ptr<Connection>(new Connection(-1));
+		return new Connection(-1);
 	}
 
 	if(fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
 		LOG_ERROR("set set fd[%d] O_NONBLOCK failed, msg=%s", fd, strerror(errno));
 		close(fd);
-		return std::shared_ptr<Connection>(new Connection(-1));
+		return new Connection(-1);
 	}
 	LOG_DEBUG("connect %s:%d success with fd[%d]", ipv4, port, fd);
 	Schedule::coroutineManager()->TakeOver(fd);
 
-	return std::shared_ptr<Connection>(new Connection(fd));
+	return new Connection(fd);
 }
 
 ssize_t Connection::Write(const char* buf, size_t sz, int timeout_ms) const {
