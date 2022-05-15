@@ -26,16 +26,16 @@ int main() {
     schedule->CreateCoroutine([&]{
         Server server = Server::ListenTCP(7000);
         while (true) {
-			shared_ptr<Client> client = server.Accept();
+			shared_ptr<Connection> conn = server.Accept();
             schedule->CreateCoroutine([client] {
                 while (true) {
                     char recv_buf[512];
-                    int n = client->Read(recv_buf, 512, 5000);
+                    int n = conn->Read(recv_buf, 512, 5000);
                     if (n <= 0) {
                         break;
                     }
 
-                    if (client->Write("+OK\r\n", 5, 1000) <= 0) {
+                    if (conn->Write("+OK\r\n", 5, 1000) <= 0) {
                         break;
                     }
                 }
