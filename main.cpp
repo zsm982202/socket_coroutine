@@ -12,7 +12,7 @@ using namespace std;
 
 
 void sigint_action(int sig) {
-    std::cout << "exit..." << std::endl;
+    cout << "exit..." << std::endl;
     exit(0);    
 }
 
