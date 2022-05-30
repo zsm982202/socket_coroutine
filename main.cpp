@@ -29,9 +29,9 @@ int main() {
                     int n = conn->Read(recv_buf, 512, 2000);
                     if(n <= 0)
                         break;
-					strcat(write_buf, recv_buf);
+                    strcat(write_buf, recv_buf);
                     if(conn->Write(write_buf, n + 1, 2000) <= 0)
-						break;
+                        break;
                 }
             }, 0, "server");
         }
